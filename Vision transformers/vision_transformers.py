@@ -3,7 +3,7 @@ from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+import tensorflow_addons as tfa
 
 print(tf.__version__)
 # mlp
@@ -118,13 +118,31 @@ def transformer_classifier():
 
     return model
 
+def prepare_data():
+    train_features_dataset = tf.data.Dataset.from_tensor_slices(x_train)
+    train_label_dataset = tf.data.Dataset.from_tensor_slices(y_train)
+
+    test_features_dataset = tf.data.Dataset.from_tensor_slices(x_test)
+    test_label_dataset = tf.data.Dataset.from_tensor_slices(y_test)
+
+    train_dataset = tf.data.Dataset.zip((train_features_dataset, train_label_dataset))
+    test_dataset = tf.data.Dataset.zip((test_features_dataset, test_label_dataset))
+
+    train_dataset = train_dataset.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+    test_dataset = test_dataset.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+    return train_dataset, test_dataset
+
+
 
 def train_model(model):
-
+    optimizer = tfa.optimizers.AdamW(
+        learning_rate=LEARNING_RATE, weight_decay=WEIGHT_DECAY
+    )
 
 
     model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  optimizer=tf.keras.optimizers.Adam(lr=LEARNING_RATE),
+                  optimizer=optimizer,
                   metrics=[
                       tf.keras.metrics.SparseCategoricalAccuracy(name='accuracy'),
                       tf.keras.metrics.SparseTopKCategoricalAccuracy(5, name='top-5-accuracy')
@@ -137,15 +155,16 @@ def train_model(model):
         save_best_only=True,
         save_weights_only=True
     )
+    train_data, test_data = prepare_data()
 
-    history = model.fit(x=x_train,
-                        y=y_train,
-                        #validation_data=(x_test, y_test),
+    history = model.fit(train_data,
                         epochs=NUM_EPOCHS,
-                        validation_split=0.1,
-                        callbacks=[checkpoint_callback])
+                        callbacks=[
+                            checkpoint_callback
+                        ])
+
     model.load_weights(checkpoint_path)
-    _, accuracy, top_5_accuracy = model.evaluate(x_test, y_test)
+    _, accuracy, top_5_accuracy = model.evaluate(test_data)
     print(f'Test accuracy: {round(accuracy * 100, 2)}%')
     print(f'Top 5 test accuracy: {round(top_5_accuracy * 100, 2)}%')
 
